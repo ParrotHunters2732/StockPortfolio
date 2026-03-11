@@ -47,10 +47,8 @@ def symbol_exist(user_symbol): #check if the symbol exist if yes return true and
     data = response.json()
     
     for item in data['result']:
-        if item['symbol'] == user_symbol: 
-            print(f"The symbol '{user_symbol}' Exists")
+        if item['symbol'] == user_symbol:
             return True
-
     else:
         print(f"The symbol '{user_symbol}' does *NOT Exists")
         return False
@@ -74,5 +72,4 @@ def store_stock_current_price(connection): #storing all stock current prices for
                 upload.append((price, symbol))
         sql = "UPDATE stocks SET current_market_price = %s WHERE symbol = %s"
         cur.executemany(sql, upload)
-        connection.commit()
     return symbols
