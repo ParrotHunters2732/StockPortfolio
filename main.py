@@ -1,9 +1,6 @@
 import argparse as ap
-import decimal
 import api
 import database as db
-
-file_path = "storage.json"
 
 parser = ap.ArgumentParser(
     prog="SPC",
@@ -20,7 +17,6 @@ add_cmd.add_argument("symbol")
 add_cmd.add_argument("quantity", type=int)
 
 remove_stock_cmd = sub_parsers.add_parser("remove-stock", help="Remove a stock from the portfolio.")
-
 
 remove_transaction_cmd = sub_parsers.add_parser("remove-transaction", help="remove a specific transaction you can select after the system display ** ALL transaction")
 
@@ -39,7 +35,6 @@ current_wl = sub_parsers.add_parser("current-wl++" , help="Calculate Deep data o
 current_wl = sub_parsers.add_parser("current-wl+" , help="Calculate Current Portfolio's Profit and Loss. base on given symbol")
 
 current_pf_cmd = sub_parsers.add_parser("current-wl", help="Calculate Current Portfolio's Profit and Loss. Off of **ALL transactions")
-current_pf_cmd.add_argument("symbol")
 
 get_stock_cmd = sub_parsers.add_parser("get-info", help="Get infomations about the given stock")
 get_stock_cmd.add_argument("stock")
@@ -58,44 +53,143 @@ if args.command == "add": #add stocks info and transactions info
         current = api.get_symbol_data(args.symbol)
         db.write_data_sql(conn,args.symbol,current,args.quantity)
         conn.commit()
+        print("Successfully Inserted the data")
                 
-elif args.command == "remove-stock": #waiting for dev
+elif args.command == "remove-stock": 
     conn = db.get_connection()
     data = db.get_all_stock(conn)
-    print(f"|{"Stock":^7}|")
-    for stock in data:
-        print(stock[0])
-    print(f"| {'-' * 89} |")
-
+    new_data = [stock[0] for stock in data]
+    print(f"| {'-' * 49} |")
+    print(f"| {"Stock":^15}|{"Transactions":^14}|{"Transaction History":^14}|")
+    print(f"| {'-' * 49} |")
+    for stock in new_data:
+        count1 , count2 = db.show_count(conn,stock)
+        print(f"| {stock:^15}|{count1:^14}|{count2:^18} |")
+    print(f"| {'-' * 49} |")
+    while True:
+        input_stock = input("Enter the stock you want to remove from above [q to quit]: ").replace(" ","").upper()
+        if input_stock == "Q":
+                print("Quited")
+                break
+        for stock in data:
+            if f'{input_stock}' == stock[0]:
+                counts = db.show_count(conn,stock)
+                db.delete_symbol_transactions(conn,stock)
+                db.delete_symbol_transactions_data(conn,stock)
+                api.store_stock_current_price(conn)
+                stocks_sum , total_portfilio_data , percentage , total_invested , total_current = db.load_all_data_sql(conn)
+                total_qty = 0
+                portfolio_summarized_data = total_portfilio_data,total_qty,percentage,total_invested,total_current
+                new_uuid = db.write_portfolio_sum_sql(conn,portfolio_summarized_data)
+                for data in stocks_sum:
+                    symbol , current_price , bought_price , qty , pnl , diff, change_percentage , TTSPS , TTCPPS = data
+                    total_qty += qty
+                    transactions_data = symbol,current_price,bought_price,diff,change_percentage,pnl,TTSPS,TTCPPS,qty,new_uuid
+                    db.write_transactions_data_sql(conn,transactions_data)
+                    db.update_port_sum_qty(conn,total_qty,new_uuid)
+                db.delete_stock(conn,stock)
+                print(f"There are {counts[0]} transactions and {counts[1]} transactions's history")
+                while True:    
+                    decision = input("[ DELETED ] data can **NOT be retrieve. Do you still intend to move forward?[Y/n]:  ").replace(" ","").lower()
+                    if decision == "n":
+                        conn.rollback()
+                        print("Quited")
+                        break
+                    elif decision == "y":
+                        conn.commit()
+                        print("successfully removed")
+                        break
+                break
+        else:
+            print(f"{input_stock} does **NOT have a data")
+            continue
+        break
+            
 elif args.command == "remove-transaction":
-    pass
-
-elif args.command == "check_symbol": 
-    #check if the symbol has a database in finnhub api #devtools
-    api.symbol_exist(args.target_symbol)
+    conn = db.get_connection()
+    data = db.get_all_stock(conn)
+    data = [stock[0] for stock in data]
+    print(f"| {'-' * 49} |")
+    print(f"| {"Stock":^15}|{"Transactions":^14}|{"Transaction History":^14}|")
+    print(f"| {'-' * 49} |")
+    for stock in data:
+        count1 , count2 = db.show_count(conn,stock)
+        print(f"| {stock:^15}|{count1:^14}|{count2:^18} |")
+    print(f"| {'-' * 49} |")
+    while True:
+        chosen_stock = input("Select a stock from the list above[q to quit]: ").replace(" ","").upper()
+        if chosen_stock == "Q":
+            print("Quited")
+            break
+        elif chosen_stock in data:
+            data = db.load_individual_stock_transaction(conn,chosen_stock)
+            id_list = []
+            print(f"| {'-' * 60} |")
+            print(f"| {"ID":^15}|{"Stock":^14}|{"Holdings":^14}|{"quantity":^14} |")
+            print(f"| {'-' * 60} |")
+            for transaction in data:
+                id , symbol , holdings , quantity = transaction
+                print(f"| {id:^15}|{symbol:^14}|{holdings:^14}|{quantity:^14} |")
+                id_list.append(str(id))
+            print(f"| {'-' * 60} |")
+            while True:
+                selected_transaction = input("Select The ID of the transaction your would like to remove[q to quit]: ")
+                if selected_transaction == "q" or selected_transaction == "Q":
+                    print("Quited")
+                    break
+                elif str(selected_transaction) in id_list:
+                    db.delete_transaction_base_id(conn,int(selected_transaction))
+                    stocks_sum , total_portfilio_data , percentage , total_invested , total_current = db.load_all_data_sql(conn)
+                    total_qty = 0
+                    portfolio_summarized_data = total_portfilio_data,total_qty,percentage,total_invested,total_current
+                    new_uuid = db.write_portfolio_sum_sql(conn,portfolio_summarized_data)
+                    for data in stocks_sum:
+                        symbol , current_price , bought_price , qty , pnl , diff, change_percentage , TTSPS , TTCPPS = data
+                        total_qty += qty
+                        transactions_data = symbol,current_price,bought_price,diff,change_percentage,pnl,TTSPS,TTCPPS,qty,new_uuid
+                        db.write_transactions_data_sql(conn,transactions_data)
+                    db.update_port_sum_qty(conn,total_qty,new_uuid)
+                    while True:
+                        decision = input(f"Would you like to delete the transaction #id '{selected_transaction}' [Y/n]: ").replace(" ","").lower()
+                        if decision == "n":
+                            conn.rollback()
+                            print(f"Removal of Transaction #ID {selected_transaction} has been Canceled")
+                            break
+                        elif decision == "y":
+                            conn.commit()
+                            print(f"Successfully Removed Transaction #ID {selected_transaction} !")
+                            break
+                        else:
+                            print(f"'{decision}' was **NOT Valid! [Y/n] only")
+                            continue
+                    break
+                else:
+                    print(f"'{selected_transaction}' was **NOT a valid ID try again!")
+            break
+        else:
+            print(f"There is not related data to the symbol '{chosen_stock}' Try again!")
 
 elif args.command == "ls": #show a list within an individual stocks
-    decision = api.symbol_exist(args.symbol)
+    symbol = args.symbol.replace(" ","").upper()
+    decision = api.symbol_exist(symbol)
     if decision:
         conn = db.get_connection()
-        data = db.load_raw_data_sql(conn,args.symbol)
+        data = db.load_raw_data_sql(conn,(symbol).replace(" ","").upper())
         i = 0
-        print("- - - - - - - - C U R R E N T | P O R T F O L I O - - - - - - - - - -")
         print(f"| {'-' * 47} |")
         print(f"| {"Indexes":^9}|{"Stocks":^10}|{"Bought":^10}|{"Quantity":^16}|")
         print(f"| {'-' * 47} |")
         for price , quantity in data:
             i += 1
-            print(f"| {i:^8} | {args.symbol:^8} | {price:>+8} | {quantity:^15}|")
+            print(f"| {i:^8} | {symbol:^8} | {price:>+8} | {quantity:^15}|")
         print(f"| {'-' * 47} |")
     else:
-        print(f"the given symbol **{args.symbol}** doesnt have a database")
+        print(f"the given symbol **{symbol}** doesnt have a database")
 
 elif args.command == "ls+": #show every list within the database
     conn = db.get_connection()
     data = db.load_all_transactions_sql(conn)
     i = 0
-    print("- - - - - - - - S T O C K S | O W N E R S H I P E D - - - - - - - - - -")
     print(f"| {'-' * 47} |")
     print("|  Indexes |    Stocks    |  Bought  |  Quantity  |")
     print(f"| {'-' * 47} |")
@@ -104,23 +198,59 @@ elif args.command == "ls+": #show every list within the database
         print(f"| {i:^8} | {stocks:>12} | {price:>8} | {quantity:^11}|")
     print(f"| {'-' * 47} |")
 
-elif args.command == "current-wl": #show the calculated data of a stock ***unfinish
-    decision = api.symbol_exist(args.symbol)
+elif args.command == "current-wl": #show the calculated data of individual stock ***unfinish
+    conn = db.get_connection()
+    data = db.get_all_stock(conn)
+    data = [stock[0] for stock in data]
+    print(f"| {'-' * 49} |")
+    print(f"| {"Stock":^15}|{"Transactions":^14}|{"Transaction History":^14}|")
+    print(f"| {'-' * 49} |")
+    for stock in data:
+        count1 , count2 = db.show_count(conn,stock)
+        print(f"| {stock:^15}|{count1:^14}|{count2:^18} |")
+    print(f"| {'-' * 49} |")
+    while True:
+        chosen_stock = input("select a stock from the list above[q to quit]: ").replace(" ","").upper()
+        if chosen_stock == "Q":
+            print("Quited")
+            break
+        elif chosen_stock in data:
+            api.store_stock_current_price(conn)
+            stocks_sum , total_portfilio_data , percentage , total_invested , total_current = db.load_all_data_sql(conn) #write new data into the data base 
+            total_qty = 0
+            portfolio_summarized_data = total_portfilio_data,total_qty,percentage,total_invested,total_current
+            new_uuid = db.write_portfolio_sum_sql(conn,portfolio_summarized_data)
+            for data in stocks_sum:
+                symbol , current_price , bought_price , qty , pnl , diff, change_percentage , TTSPS , TTCPPS = data
+                total_qty += qty
+                transactions_data = symbol,current_price,bought_price,diff,change_percentage,pnl,TTSPS,TTCPPS,qty,new_uuid
+                db.write_transactions_data_sql(conn,transactions_data)
+            db.update_port_sum_qty(conn,total_qty,new_uuid)
+            conn.commit()
 
-    if decision:
-        conn = db.get_connection()
-        data = db.load_calculated_data_sql(conn , args.symbol)
-        price = data[0][0].quantize(decimal.Decimal('0.01'), rounding = decimal.ROUND_HALF_UP)
-        quantity = data[0][1]
-        total_invested = data[0][2].quantize(decimal.Decimal('0.01'), rounding = decimal.ROUND_HALF_UP)
-        print(f"""Average Price: {price} $
-Total Quantity: {quantity}
-Total Invested: {total_invested} $
-""")
-    elif decision == False:
-        print(f"The given symbol **{args.symbol}** doesnt have a database")
+            stock_data1 = db.load_individual_symbol_calculated_transaction(conn,chosen_stock) #return calculated net data off of individual stock
+            transactions = db.load_raw_data_sql(conn,(chosen_stock).replace(" ","").upper()) #load raw transactions base off of symbol
+            i = 0
+            print(f"| {'-' * 59} |")
+            print(f"| {"Indexes":^9}|{"Stocks":^10}|{"MarketValue":^10}|{"Bought":^10}|{"Quantity":^16}|")
+            print(f"| {'-' * 59} |")
+            for price2 , quantity , *_ in transactions:
+                i += 1
+                print(f"| {i:^8} | {chosen_stock:^8} |{stock_data1[0][1]:^11.2f}| {price2:>8} | {quantity:^15}|")
+            print(f"| {'-' * 59} |")
+            print(f"| {'-' * 59} |")
+            print(f"| { 'NET PROFIT / LOSS':<32} : {f'{stock_data1[0][3]:+.2f} $':^24} |")
+            print(f"| { 'TOTAL QUANTITY':<32} : {stock_data1[0][2]:^24} |")
+            print(f"| { 'TOTAL Inc / Dec %':<32} : {f'{stock_data1[0][5]:+.2f} %':^24} |")
+            print(f"| {'-' * 59} |")
+            print(f"| { 'TOTAL INVESTED':<32} : {f'{stock_data1[0][6]:.2f} $':^24} |")
+            print(f"| { 'CURRENT MARKET VALUE':<32} : {f'{stock_data1[0][7]:.2f} $':^24} |")
+            print(f"| {'-' * 59} |")
+            break
+        else:
+            print("there is not related data to the given symbol try again")
 
-elif args.command == "current-wl+":
+elif args.command == "current-wl+": #show a brief infomation about stocks
     conn = db.get_connection()
     api.store_stock_current_price(conn)
     stocks_sum , total_portfilio_data , percentage , total_invested , total_current = db.load_all_data_sql(conn)
@@ -128,20 +258,26 @@ elif args.command == "current-wl+":
     print(f"| {'-' * 47} |")
     print("|  Stocks  | Current Price |  Bought  |  Quantity |")
     print(f"| {'-' * 47} |")
+    portfolio_summarized_data = total_portfilio_data,total_qty,percentage,total_invested,total_current
+    new_uuid = db.write_portfolio_sum_sql(conn,portfolio_summarized_data)
     for data in stocks_sum:
         symbol , current_price , bought_price , qty , pnl , diff, change_percentage , TTSPS , TTCPPS = data
         total_qty += qty
+        transactions_data = symbol,current_price,bought_price,diff,change_percentage,pnl,TTSPS,TTCPPS,qty,new_uuid
+        db.write_transactions_data_sql(conn,transactions_data)
         print(f"| {symbol:^8} | {current_price:^10.2f} | {bought_price:^10.2f} | {qty:^11}|")
+    db.update_port_sum_qty(conn,total_qty,new_uuid)
+    conn.commit()
     print(f"| {'-' * 47} |")
-    print(f"| { 'NET PROFIT / LOSS':<26} : {f'{total_portfilio_data:.2f} $':^18} |")
+    print(f"| { 'NET PROFIT / LOSS':<26} : {f'{total_portfilio_data:+.2f} $':^18} |")
     print(f"| { 'TOTAL QUANTITY':<26} : {total_qty:^18} |")
-    print(f"| { 'TOTAL Inc / Dec %':<26} : {f'{percentage:.2f} %':^19}|")
+    print(f"| { 'TOTAL Inc / Dec %':<26} : {f'{percentage:+.2f} %':^19}|")
     print(f"| {'-' * 47} |")
     print(f"| { 'TOTAL INVESTED':<26} : {f'{total_invested:.2f} $':^18} |")
     print(f"| { 'CURRENT MARKET VALUE':<26} : {f'{total_current:.2f} $':^18} |")
     print(f"| {'-' * 47} |")
 
-elif args.command == "current-wl++":
+elif args.command == "current-wl++": #show insite and deep data about stocks 
     conn = db.get_connection()
     api.store_stock_current_price(conn)
     stocks_sum , total_portfilio_data , percentage , total_invested , total_current = db.load_all_data_sql(conn)
@@ -156,16 +292,17 @@ elif args.command == "current-wl++":
         total_qty += qty
         transactions_data = symbol,current_price,bought_price,diff,change_percentage,pnl,TTSPS,TTCPPS,qty,new_uuid
         db.write_transactions_data_sql(conn,transactions_data)
-        print(f"| {symbol:^5} | {current_price:^7.2f} | {bought_price:^7.2f} | {diff:^7.2f}| {change_percentage:^7.2f}| {pnl:^10.2f}|{TTCPPS:^12.2f}|{TTSPS:^12.2f}|{qty:^7}|")
+        print(f"| {symbol:^5} | {current_price:^7.2f} | {bought_price:^7.2f} | {diff:^+7.2f}| {change_percentage:^+7.2f}| {pnl:^+10.2f}|{TTCPPS:^12.2f}|{TTSPS:^12.2f}|{qty:^7}|")
+    db.update_port_sum_qty(conn,total_qty,new_uuid)
     conn.commit()
-    print(f"|{'-' * 89}|")
-    print(f"| { 'NET PROFIT / LOSS':<26} : {f'{total_portfilio_data:.2f} $':^17}|")
+    print(f"| {'-' * 89} |")
+    print(f"| { 'NET PROFIT / LOSS':<26} : {f'{total_portfilio_data:+.2f} $':^17}|")
     print(f"| { 'TOTAL QUANTITY':<26} : {total_qty:^17}|")
-    print(f"| { 'TOTAL Inc / Dec %':<26} : {f'{percentage:.2f} %':^17}|")
+    print(f"| { 'TOTAL Inc / Dec %':<26} : {f'{percentage:+.2f} %':^17}|")
     print(f"|{'-' * 47}|")
     print(f"| { 'TOTAL INVESTED':<26} : {f'{total_invested:.2f} $':^17}|")
     print(f"| { 'CURRENT MARKET VALUE':<26} : {f'{total_current:.2f} $':^17}|")
-    print(f"|{'-' * 47}|{'-' * 42}|")
+    print(f"| {'-' * 89} |")
 
 elif args.command == "get-info": #get symbol's if symbol has company's data then it print com pany data if not it doesnt
     company_data , has_company_data = api.get_company_data(args.stock)
@@ -202,7 +339,7 @@ elif args.command == "clear": #remove all the data inside transactions 2 step ve
             conn.commit()
             break
         elif user_decision == "n":
-            print("unsuccessful to clear data")
+            print("Quited")
             break
         else:
-            print(f"{user_decision} was **NOT a valid input either use Y/N? (N to quit)")
+            print(f"{user_decision} was **NOT a valid input either use y/n?")

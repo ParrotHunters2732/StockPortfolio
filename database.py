@@ -1,10 +1,42 @@
 import psycopg2
-from datetime import date
+import datetime
 
 def get_connection(): #getting an self-close connection
     return psycopg2.connect(user="x", host="localhost", dbname="portfolio_db", port="5432")
 
-def load_all_data_sql(connection): #load all data and calculate it for finding average cost per stock
+def load_individual_symbol_calculated_transaction(connection,symbol): #load all data and return all the calculated data
+    with connection.cursor() as cur:
+        cur.execute("""
+       SELECT
+    s.current_market_price,
+    t.avg_cost,
+    t.total_quantity
+FROM stocks s
+JOIN (
+    SELECT
+        symbol, 
+        SUM(quantity) AS total_quantity,
+        SUM(price * quantity) / SUM(quantity) AS avg_cost
+    FROM transactions
+    GROUP BY symbol
+) t
+ON s.symbol = t.symbol
+WHERE s.symbol = %s;
+""", (symbol,))
+        data = cur.fetchall()
+        return_data = []
+        for row in data:
+            current_price , spent , qty = float(row[0]) , float(row[1]) , row[2]
+            diff = current_price - spent
+            pnl = diff * qty 
+            change_percentage = (diff / spent)*100
+            TTSPS = spent * qty
+            TTCPPS = current_price * qty
+            data = current_price , spent , qty , pnl , diff, change_percentage , TTSPS , TTCPPS 
+            return_data.append(data)
+        return return_data
+
+def load_all_data_sql(connection): #load all data and return all the calculated data
     with connection.cursor() as cur:
         cur.execute("""SELECT
     s.symbol,
@@ -16,7 +48,6 @@ JOIN (
     SELECT
         symbol, 
         SUM(quantity) AS total_quantity,
-        -- The Logic: (Total Money Spent) / (Total Shares Owned)
         SUM(price * quantity) / SUM(quantity) AS avg_cost
     FROM transactions
     GROUP BY symbol
@@ -51,7 +82,7 @@ def write_transactions_data_sql(connection,data): #commit outer scope
         (data))
 
 def write_portfolio_sum_sql(connection,data): #commit outer scope
-    today = date.today()
+    today = datetime.datetime.now()
     new_data = data + (today,)
     with connection.cursor() as cur:
         cur.execute("""
@@ -65,19 +96,14 @@ def write_portfolio_sum_sql(connection,data): #commit outer scope
 def write_data_sql(connection , symbol , price , quantity): #write data of transaction in db
     symbol = f'{symbol.replace(" ","").upper()}'
     with connection.cursor() as cur:
-        try:
-            cur.execute("INSERT INTO stocks (symbol) VALUES (%s)", (symbol,))
-            cur.execute("INSERT INTO transactions (symbol , price , quantity) VALUES (%s , %s , %s)", (symbol,price,quantity,))
-        except psycopg2.errors.UniqueViolation:
-            connection.rollback()
-            cur.execute("INSERT INTO transactions (symbol , price , quantity) VALUES (%s , %s , %s)", (symbol,price,quantity,))
-            print("Successfully insert a transaction")
-            connection.commit()
-        except Exception as e:
-            raise e
-        else:
-            print("successfully insert a Profile and Transaction")
-
+        cur.execute("""
+            INSERT INTO stocks (symbol, current_market_price)
+            VALUES (%s,%s)
+            ON CONFLICT (symbol) DO NOTHING;
+            
+            INSERT INTO transactions (symbol , price , quantity)
+            VALUES (%s,%s,%s);
+""",(symbol,price,symbol,price,quantity))
     
 def load_calculated_data_sql(connection , symbol): #get calculated db off of induvidual stock
     with connection.cursor() as cur:
@@ -102,14 +128,15 @@ def load_raw_data_sql(connection , symbol): #get db off of induvidual transactio
 def load_all_transactions_sql(connection): #get db off of all transactions
     with connection.cursor() as cur:
         cur.execute("""SELECT symbol , price , quantity
-                    FROM transactions;""")
+                    FROM transactions
+                    ORDER BY symbol;""")
         data = cur.fetchall()
         return data
 
 def delete_all_data_sql(connection): #remove all data in db (only transactions)
     with connection.cursor() as cur:
         cur.execute("""
-        TRUNCATE TABLE transactions;
+        TRUNCATE TABLE transactions , transactions_data , portfolio_summary , stocks;
 """)
         
 def get_all_stock(connection):
@@ -125,3 +152,50 @@ def delete_stock(connection, stock):
         cur.execute("""
         DELETE FROM stocks WHERE symbol = %s;
 """,(stock))
+
+def delete_symbol_transactions(connection,symbol):
+    with connection.cursor() as cur:
+        cur.execute("""
+        DELETE FROM transactions WHERE symbol = %s;
+""", (symbol,))
+
+def delete_symbol_transactions_data(connection,symbol):
+    with connection.cursor() as cur:
+        cur.execute("""
+        DELETE FROM transactions_data WHERE symbol = %s;
+""", (symbol,))
+
+def delete_transaction_base_id(connection,id):
+    with connection.cursor() as cur:
+        cur.execute("""
+        DELETE FROM transactions WHERE id = %s;
+""", (id,))
+
+def update_port_sum_qty(connection,qty,uuid):
+    with connection.cursor() as cur:
+        cur.execute("""
+        UPDATE portfolio_summary 
+        SET total_quantity = %s
+        WHERE id = %s
+""", (qty,uuid))
+
+def show_count(connection,symbol):
+    with connection.cursor() as cur:
+        cur.execute("""SELECT
+        (SELECT COUNT(t.id) FROM transactions t WHERE t.symbol = %s) AS transactions_counts,
+        (SELECT COUNT(td.id) FROM transactions_data td WHERE td.symbol = %s) AS transactions_data_counts;
+""", (symbol,symbol,))
+        
+        respond = cur.fetchone()
+        return respond
+    
+def load_individual_stock_transaction(connection,symbol):
+    with connection.cursor() as cur:
+        cur.execute("""
+    SELECT * FROM transactions WHERE symbol = %s
+""", (symbol,))
+        data = cur.fetchall()
+        return data
+
+conn = get_connection()
+#print(load_individual_symbol_calculated_transaction(conn,'AAPL'))
