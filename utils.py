@@ -49,6 +49,8 @@ def add(symbol,quantity):
     else:
         conn.commit()
         print("Successfully Inserted the transaction")
+    finally:
+        conn.close()
 
 def remove_stock():
     conn = None
@@ -78,8 +80,8 @@ def remove_stock():
                     total_qty = 0
                     portfolio_summarized_data = total_portfilio_data,total_qty,percentage,total_invested,total_current
                     new_uuid = db.write_portfolio_sum_sql(conn,portfolio_summarized_data)
-                    for data in stocks_sum:
-                        symbol , current_price , bought_price , qty , pnl , diff, change_percentage , TTSPS , TTCPPS = data
+                    for stockrow in stocks_sum:
+                        symbol , current_price , bought_price , qty , pnl , diff, change_percentage , TTSPS , TTCPPS = stockrow
                         total_qty += qty
                         transactions_data = symbol,current_price,bought_price,diff,change_percentage,pnl,TTSPS,TTCPPS,qty,new_uuid
                         db.write_transactions_data_sql(conn,transactions_data)
@@ -133,6 +135,8 @@ def remove_stock():
         if conn:
             conn.rollback()
             print(f"Error in Python : {e}")
+    finally:
+        conn.close()
 
 def remove_transaction():
     conn = None
@@ -174,8 +178,8 @@ def remove_transaction():
                         total_qty = 0
                         portfolio_summarized_data = total_portfilio_data,total_qty,percentage,total_invested,total_current
                         new_uuid = db.write_portfolio_sum_sql(conn,portfolio_summarized_data)
-                        for data in stocks_sum:
-                            symbol , current_price , bought_price , qty , pnl , diff, change_percentage , TTSPS , TTCPPS = data
+                        for stockrow in stocks_sum:
+                            symbol , current_price , bought_price , qty , pnl , diff, change_percentage , TTSPS , TTCPPS = stockrow
                             total_qty += qty
                             transactions_data = symbol,current_price,bought_price,diff,change_percentage,pnl,TTSPS,TTCPPS,qty,new_uuid
                             db.write_transactions_data_sql(conn,transactions_data)
@@ -231,6 +235,8 @@ def remove_transaction():
         if conn:
             conn.rollback()
             print(f"Error in Python : {e}")
+    finally:
+        conn.close()
 
 def ls_stock(symbol):
     conn = None
@@ -252,36 +258,30 @@ def ls_stock(symbol):
             print(f"the given symbol **{symbol}** doesnt have a database")
     except psycopg2.OperationalError:
         if conn:
-            conn.rollback()
             print("Connection To DataBase [ Failed ]")
     except psycopg2.Error as e:
         if conn:
-            conn.rollback()
             print(f"Error in psycopg2: {e}")
     except urllet.ConnectionError:
         if conn:
-            conn.rollback()
             print("No Internet / API unreachable")
     except urllet.TimeoutError:
         if conn:
-            conn.rollback()
             print("API Request Took too long")
     except urllet.MaxRetryError:
         if conn:
-            conn.rollback()
             print("Connection Retry Limit Hit")
     except urllet.HTTPError as e:
         if conn:
-            conn.rollback()
             print(f"Error in Urllib3 : {e}")
     except KeyError:
         if conn:
-            conn.rollback()
             print("Unexpect API response")
     except Exception as e:
         if conn:
-            conn.rollback()
             print(f"Error in Python : {e}")
+    finally:
+        conn.close()
 
 def ls_stocks():
     conn = None
@@ -298,36 +298,30 @@ def ls_stocks():
         print(f"| {'-' * 47} |")
     except psycopg2.OperationalError:
         if conn:
-            conn.rollback()
             print("Connection To DataBase [ Failed ]")
     except psycopg2.Error as e:
         if conn:
-            conn.rollback()
             print(f"Error in psycopg2: {e}")
     except urllet.ConnectionError:
         if conn:
-            conn.rollback()
             print("No Internet / API unreachable")
     except urllet.TimeoutError:
         if conn:
-            conn.rollback()
             print("API Request Took too long")
     except urllet.MaxRetryError:
         if conn:
-            conn.rollback()
             print("Connection Retry Limit Hit")
     except urllet.HTTPError as e:
         if conn:
-            conn.rollback()
             print(f"Error in Urllib3 : {e}")
     except KeyError:
         if conn:
-            conn.rollback()
             print("Unexpect API response")
     except Exception as e:
         if conn:
-            conn.rollback()
             print(f"Error in Python : {e}")
+    finally:
+        conn.close()
 
 def current_wl_stock():
     conn = None
@@ -353,13 +347,13 @@ def current_wl_stock():
                 total_qty = 0
                 portfolio_summarized_data = total_portfilio_data,total_qty,percentage,total_invested,total_current
                 new_uuid = db.write_portfolio_sum_sql(conn,portfolio_summarized_data)
-                for data in stocks_sum:
-                    symbol , current_price , bought_price , qty , pnl , diff, change_percentage , TTSPS , TTCPPS = data
+                for stockrow in stocks_sum:
+                    symbol , current_price , bought_price , qty , pnl , diff, change_percentage , TTSPS , TTCPPS = stockrow
                     total_qty += qty
                     transactions_data = symbol,current_price,bought_price,diff,change_percentage,pnl,TTSPS,TTCPPS,qty,new_uuid
                     db.write_transactions_data_sql(conn,transactions_data)
                 db.update_port_sum_qty(conn,total_qty,new_uuid)
-
+                conn.commit()
                 stock_data1 = db.load_individual_symbol_calculated_transaction(conn,chosen_stock) #return calculated net data off of individual stock
                 transactions = db.load_raw_data_sql(conn,(chosen_stock).replace(" ","").upper()) #load raw transactions base off of symbol
                 i = 0
@@ -413,8 +407,8 @@ def current_wl_stock():
         if conn:
             conn.rollback()
             print(f"Error in Python : {e}")
-    else:
-        conn.commit()
+    finally:
+        conn.close()
 
 def current_wl_stocks():
     conn = None
@@ -477,6 +471,8 @@ def current_wl_stocks():
             print(f"Error in Python : {e}")
     else:
         conn.commit()
+    finally:
+        conn.close()
 
 def current_wl_deep():
     conn = None
@@ -539,9 +535,10 @@ def current_wl_deep():
             print(f"Error in Python : {e}")
     else:
         conn.commit()
+    finally:
+        conn.close()
 
 def get_info(symbol):
-    conn = None
     try:
         company_data , has_company_data = api.get_company_data(symbol)
         if has_company_data:
@@ -566,37 +563,17 @@ def get_info(symbol):
             else:
                 print(f"It Seems like Your Symbol {symbol} **DOES NOT** have Company DataBase")
             print(f"| {'-' * 47} |")
-    except psycopg2.OperationalError:
-        if conn:
-            conn.rollback()
-            print("Connection To DataBase [ Failed ]")
-    except psycopg2.Error as e:
-        if conn:
-            conn.rollback()
-            print(f"Error in psycopg2: {e}")
     except urllet.ConnectionError:
-        if conn:
-            conn.rollback()
             print("No Internet / API unreachable")
     except urllet.TimeoutError:
-        if conn:
-            conn.rollback()
             print("API Request Took too long")
     except urllet.MaxRetryError:
-        if conn:
-            conn.rollback()
             print("Connection Retry Limit Hit")
     except urllet.HTTPError as e:
-        if conn:
-            conn.rollback()
             print(f"Error in Urllib3 : {e}")
     except KeyError:
-        if conn:
-            conn.rollback()
             print("Unexpect API response")
     except Exception as e:
-        if conn:
-            conn.rollback()
             print(f"Error in Python : {e}")
 
 def clear():
@@ -615,7 +592,6 @@ def clear():
                 break
             else:
                 print(f"{user_decision} was **NOT a valid input either use y/n?")
-                
     except psycopg2.OperationalError:
         if conn:
             conn.rollback()
@@ -648,4 +624,5 @@ def clear():
         if conn:
             conn.rollback()
             print(f"Error in Python : {e}")
-        
+    finally:
+        conn.close()
