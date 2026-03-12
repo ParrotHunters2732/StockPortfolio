@@ -10,10 +10,15 @@ def add(symbol,quantity):
         if not symbol_validation:
             print(f"The given symbol '{symbol}' doesnt have data base!")
             return
-        elif symbol_validation:
+        elif symbol_validation and quantity > 0:
             conn = db.get_connection()
             current = api.get_symbol_data(symbol)
             db.write_data_sql(conn,symbol,current,quantity)
+            conn.commit()
+            conn.close()
+            print("Successfully Inserted the transaction")
+        else:
+            print("Failed | Quantity MUST be above 0.")
     except psycopg2.OperationalError:
         if conn:
             conn.rollback()
@@ -46,11 +51,6 @@ def add(symbol,quantity):
         if conn:
             conn.rollback()
             print(f"Error in Python : {e}")
-    else:
-        conn.commit()
-        print("Successfully Inserted the transaction")
-    finally:
-        conn.close()
 
 def remove_stock():
     conn = None
