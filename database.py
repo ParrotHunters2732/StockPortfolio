@@ -103,7 +103,7 @@ def write_data_sql(connection , symbol , price , quantity): #write data of trans
             
             INSERT INTO transactions (symbol , price , quantity)
             VALUES (%s,%s,%s);
-""",(symbol,price,symbol,price,quantity))
+""",(symbol,price,symbol,price,quantity,))
     
 def load_calculated_data_sql(connection , symbol): #get calculated db off of induvidual stock
     with connection.cursor() as cur:
@@ -151,7 +151,7 @@ def delete_stock(connection, stock):
     with connection.cursor() as cur:
         cur.execute("""
         DELETE FROM stocks WHERE symbol = %s;
-""",(stock))
+""",(stock,))
 
 def delete_symbol_transactions(connection,symbol):
     with connection.cursor() as cur:
@@ -177,7 +177,7 @@ def update_port_sum_qty(connection,qty,uuid):
         UPDATE portfolio_summary 
         SET total_quantity = %s
         WHERE id = %s
-""", (qty,uuid))
+""", (qty,uuid,))
 
 def show_count(connection,symbol):
     with connection.cursor() as cur:
@@ -196,6 +196,3 @@ def load_individual_stock_transaction(connection,symbol):
 """, (symbol,))
         data = cur.fetchall()
         return data
-
-conn = get_connection()
-#print(load_individual_symbol_calculated_transaction(conn,'AAPL'))
